@@ -10,7 +10,8 @@ from jax_moseq.utils.distributions import (
 from jax_moseq.utils.autoregression import (
     get_lags,
     get_nlags,
-    ar_log_likelihood
+    ar_log_likelihood,
+    apply_ar_params_conv
 )
 from jax_moseq.utils.transitions import resample_hdp_transitions
 
@@ -156,6 +157,36 @@ def _resample_regression_params(args, *, x_in, x_out,
     
     S_n = S_0 + S_out_out + (M_0 @ K_0_inv @ M_0.T - M_n @ K_n_inv @ M_n.T)
     return sample_mniw(seed, nu_0 + mask.sum(), S_n, M_n, K_n)
+
+
+def _resample_precision(data, mask, seed, nu, Ab, Q):
+    nlags = get_nlags(Ab)
+
+    a_post = nu / 2 + Ab.shape[0] / 2
+
+    r = data[:, nlags:] - apply_ar_params_conv(data, Ab)
+
+    # TODO: verify replacement of inv_psd function
+    sigma_inv = jnp.linalg.inv(Q)
+
+    z = sigma_inv.dot(r.T).T
+    # TODO: is this the correct dimension to sum over?
+    # TODO: is this where I mask out other syllables?
+    b_post = nu / 2 + (r * z * mask).sum(1) / 2
+
+    tau = jr.gamma(seed, a_post, 1 / b_post)
+    return tau
+
+
+def _get_scaled_statistics(data, precision):
+    scaled_data = data * precision[..., na]
+    D = Ab.shape[0]
+
+    statmat = scaled_data.T.dot(data)
+
+    xxT, yxT, yyT = statmat[:-D, :-D], statmat[-D:, :-D], statmat[-D:, -D:]
+
+    return jnp.array([yyT, yxT, xxT, data.shape[1]])
 
 
 def resample_model(data, seed, states, params, hypparams,

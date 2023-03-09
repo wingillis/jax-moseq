@@ -40,7 +40,17 @@ def ar_log_likelihood(x, params):
         mu = apply_ar_params_conv(x, Ab)
     else:
         mu = apply_ar_params(x, Ab)
-    return tfd.MultivariateNormalFullCovariance(mu, Q).log_prob(x[..., nlags:, :])
+    return tfd.MultivariateNormalFullCovariance(mu, Q).log_prob(x[..., nlags:])
+
+
+def robust_ar_log_likelihood(x, params):
+    Ab, Q, nu = params
+    nlags = get_nlags(Ab)
+    if Ab.ndim == 2:
+        mu = apply_ar_params_conv(x, Ab)
+    else:
+        mu = apply_ar_params(x, Ab)
+    return tfd.MultivariateStudentTLinearOperator(nu, mu, Q).log_prob(x[..., nlags:])
 
 
 def get_lags(x, nlags):
